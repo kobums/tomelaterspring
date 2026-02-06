@@ -1,0 +1,40 @@
+spring:
+  application:
+    name: tomelater
+
+  datasource:
+    url: jdbc:mysql://140.82.12.99:3306/tomelater?useSSL=false&allowPublicKeyRetrieval=true&useUnicode=true&characterEncoding=utf8
+    username: tomelater
+    password: tomelaterdb
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: none
+    show-sql: true
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQLDialect
+        format_sql: true
+
+  security:
+    user:
+      name: admin
+      password: admin
+
+jwt:
+  secret: WkaQHd100%MySecureJwtSecretKey2024FortomelaterApplicationWith256BitsLength
+  expiration: 86400000 # 24 hours in milliseconds
+
+firebase:
+  service-account-file: classpath:firebase-service-account.json
+
+server:
+  port: 9006
+  address: 0.0.0.0
+
+logging:
+  level:
+    com.gowoobro.tomelater: DEBUG
+    org.springframework.security: DEBUG
+    org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder: ERROR
