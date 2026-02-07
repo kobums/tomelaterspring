@@ -30,7 +30,7 @@ firebase:
   service-account-file: classpath:firebase-service-account.json
 
 server:
-  port: 9006
+  port: 8006
   address: 0.0.0.0
 
 logging:
