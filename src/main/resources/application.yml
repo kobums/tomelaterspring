@@ -3,9 +3,9 @@ spring:
     name: tomelater
 
   datasource:
-    url: jdbc:mysql://140.82.12.99:3306/tomelater?useSSL=false&allowPublicKeyRetrieval=true&useUnicode=true&characterEncoding=utf8
-    username: tomelater
-    password: tomelaterdb
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
 
   jpa:
@@ -21,9 +21,20 @@ spring:
     user:
       name: admin
       password: admin
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: ${MAIL_USERNAME}
+    password: ${MAIL_PASSWORD}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
 
 jwt:
-  secret: WkaQHd100%MySecureJwtSecretKey2024FortomelaterApplicationWith256BitsLength
+  secret: ${JWT_SECRET}
   expiration: 86400000 # 24 hours in milliseconds
 
 firebase:
