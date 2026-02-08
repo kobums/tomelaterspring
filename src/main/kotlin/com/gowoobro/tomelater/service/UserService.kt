@@ -63,19 +63,29 @@ class UserService(private val userRepository: UserRepository, private val passwo
 
 
     fun create(request: UserCreateRequest): User {
+        if (userRepository.existsByEmail(request.email)) {
+            throw IllegalArgumentException("이미 존재하는 이메일입니다.")
+        }
+        if (userRepository.existsByNickname(request.nickname)) {
+            throw IllegalArgumentException("이미 존재하는 닉네임입니다.")
+        }
+
+        val now = LocalDateTime.now()
         val entity = User(
             email = request.email,
             passwd = passwordEncoder.encode(request.passwd ?: "")!!,
             nickname = request.nickname,
             socialtype = request.socialtype,
             socialid = request.socialid,
-            createdat = request.createdat ?: LocalDateTime.now(),
-            updatedat = request.updatedat ?: LocalDateTime.now(),
+            createdat = now,
+            updatedat = now,
         )
         return userRepository.save(entity)
     }
 
+
     fun createBatch(requests: List<UserCreateRequest>): List<User> {
+        val now = LocalDateTime.now()
         val entities = requests.map { request ->
             User(
                 email = request.email,
@@ -83,8 +93,8 @@ class UserService(private val userRepository: UserRepository, private val passwo
                 nickname = request.nickname,
                 socialtype = request.socialtype,
                 socialid = request.socialid,
-                createdat = request.createdat ?: LocalDateTime.now(),
-                updatedat = request.updatedat ?: LocalDateTime.now(),
+                createdat = now,
+                updatedat = now,
             )
         }
         return userRepository.saveAll(entities)
@@ -106,8 +116,7 @@ class UserService(private val userRepository: UserRepository, private val passwo
             nickname = request.nickname,
             socialtype = request.socialtype,
             socialid = request.socialid,
-            createdat = request.createdat,
-            updatedat = request.updatedat,
+            updatedat = LocalDateTime.now(),
         )
         return userRepository.save(updated)
     }
@@ -148,9 +157,22 @@ class UserService(private val userRepository: UserRepository, private val passwo
             nickname = request.nickname ?: existing.nickname,
             socialtype = request.socialtype ?: existing.socialtype,
             socialid = request.socialid ?: existing.socialid,
-            createdat = request.createdat ?: existing.createdat,
-            updatedat = request.updatedat ?: existing.updatedat,
+            updatedat = LocalDateTime.now(),
         )
         return userRepository.save(updated)
+    }
+
+    fun updatePasswordByEmail(email: String, newPasswd: String): Boolean {
+        val users = userRepository.findByEmail(email)
+        val user = users.firstOrNull() ?: return false
+        
+        val encodedPassword = passwordEncoder.encode(newPasswd)!!
+        
+        val updatedUser = user.copy(
+            passwd = encodedPassword,
+            updatedat = LocalDateTime.now()
+        )
+        userRepository.save(updatedUser)
+        return true
     }
 }

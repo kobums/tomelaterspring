@@ -33,4 +33,9 @@ interface UserRepository : JpaRepository<User, Long> {
     fun findByCreatedat(createdat: LocalDateTime): List<User>
 
     fun findByUpdatedat(updatedat: LocalDateTime): List<User>
+
+    fun existsByEmail(email: String): Boolean
+
+    fun existsByNickname(nickname: String): Boolean
 }
+

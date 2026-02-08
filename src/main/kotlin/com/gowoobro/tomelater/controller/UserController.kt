@@ -164,14 +164,17 @@ class UserController(
     }
 
     @PostMapping
-    fun createUser(@RequestBody request: UserCreateRequest): ResponseEntity<UserResponse> {
+    fun createUser(@RequestBody request: UserCreateRequest): ResponseEntity<Any> {
         return try {
             val res = userService.create(request)
             ResponseEntity.ok(toResponse(res))
+        } catch (e: IllegalArgumentException) {
+            ResponseEntity.status(409).body(mapOf("error" to (e.message ?: "요청이 잘못되었습니다.")))
         } catch (e: Exception) {
-            ResponseEntity.badRequest().build()
+            ResponseEntity.badRequest().body(mapOf("error" to (e.message ?: "회원가입 처리에 실패했습니다.")))
         }
     }
+
 
     @PostMapping("/batch")
     fun createUsers(@RequestBody requests: List<UserCreateRequest>): ResponseEntity<List<UserResponse>> {
