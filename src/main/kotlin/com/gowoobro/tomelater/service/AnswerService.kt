@@ -60,26 +60,28 @@ class AnswerService(private val answerRepository: AnswerRepository) {
 
 
     fun create(request: AnswerCreateRequest): Answer {
+        val now = LocalDateTime.now()
         val entity = Answer(
             uidId = request.uid,
             qidId = request.qid,
             content = request.content,
             ispublic = request.ispublic,
-            createdat = request.createdat,
-            updatedat = request.updatedat,
+            createdat = now,
+            updatedat = now,
         )
         return answerRepository.save(entity)
     }
 
     fun createBatch(requests: List<AnswerCreateRequest>): List<Answer> {
+        val now = LocalDateTime.now()
         val entities = requests.map { request ->
             Answer(
                 uidId = request.uid,
                 qidId = request.qid,
                 content = request.content,
                 ispublic = request.ispublic,
-                createdat = request.createdat,
-                updatedat = request.updatedat,
+                createdat = now,
+                updatedat = now,
             )
         }
         return answerRepository.saveAll(entities)
@@ -93,8 +95,7 @@ class AnswerService(private val answerRepository: AnswerRepository) {
             qidId = request.qid,
             content = request.content,
             ispublic = request.ispublic,
-            createdat = request.createdat,
-            updatedat = request.updatedat,
+            updatedat = LocalDateTime.now(),
         )
         return answerRepository.save(updated)
     }
@@ -134,8 +135,7 @@ class AnswerService(private val answerRepository: AnswerRepository) {
             qidId = request.qid ?: existing.qidId,
             content = request.content ?: existing.content,
             ispublic = request.ispublic ?: existing.ispublic,
-            createdat = request.createdat ?: existing.createdat,
-            updatedat = request.updatedat ?: existing.updatedat,
+            updatedat = LocalDateTime.now(),
         )
         return answerRepository.save(updated)
     }

@@ -64,4 +64,11 @@ interface AnswerRepository : JpaRepository<Answer, Long> {
         "question"
     ])
     fun findByUpdatedat(updatedat: LocalDateTime): List<Answer>
+
+    @EntityGraph(attributePaths = [
+        "user",
+        "question"
+    ])
+    fun findByCreatedatBetween(start: LocalDateTime, end: LocalDateTime): List<Answer>
 }
+

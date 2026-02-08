@@ -55,24 +55,27 @@ class QuestionService(private val questionRepository: QuestionRepository) {
 
 
     fun create(request: QuestionCreateRequest): Question {
+        val now = LocalDateTime.now()
         val entity = Question(
             content = request.content,
             month = request.month,
             day = request.day,
-            createdat = request.createdat,
-            updatedat = request.updatedat,
+            createdat = now,
+            updatedat = now,
         )
         return questionRepository.save(entity)
     }
 
     fun createBatch(requests: List<QuestionCreateRequest>): List<Question> {
+        // Let's check QuestionService.kt line 68. The user's file showed fun createBatch(requests: List<QuestionCreateRequest>): List<Question>
+        val now = LocalDateTime.now()
         val entities = requests.map { request ->
             Question(
                 content = request.content,
                 month = request.month,
                 day = request.day,
-                createdat = request.createdat,
-                updatedat = request.updatedat,
+                createdat = now,
+                updatedat = now,
             )
         }
         return questionRepository.saveAll(entities)
@@ -85,8 +88,7 @@ class QuestionService(private val questionRepository: QuestionRepository) {
             content = request.content,
             month = request.month,
             day = request.day,
-            createdat = request.createdat,
-            updatedat = request.updatedat,
+            updatedat = LocalDateTime.now(),
         )
         return questionRepository.save(updated)
     }
@@ -125,8 +127,7 @@ class QuestionService(private val questionRepository: QuestionRepository) {
             content = request.content ?: existing.content,
             month = request.month ?: existing.month,
             day = request.day ?: existing.day,
-            createdat = request.createdat ?: existing.createdat,
-            updatedat = request.updatedat ?: existing.updatedat,
+            updatedat = LocalDateTime.now(),
         )
         return questionRepository.save(updated)
     }
