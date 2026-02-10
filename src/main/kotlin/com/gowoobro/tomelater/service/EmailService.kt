@@ -36,7 +36,7 @@ class EmailService(
                 <div style="background-color: #f9fafb; padding: 30px; border-radius: 8px; text-align: center; border: 1px dashed #e5e7eb;">
                     <p style="font-size: 16px; color: #374151; margin-bottom: 20px; line-height: 1.6;">
                         안녕하세요!<br>
-                        또미레이터 회원가입을 신청해 주셔서 감사합니다.<br>
+                        투미레이터 회원가입을 신청해 주셔서 감사합니다.<br>
                         아래의 6자리 인증 코드를 입력하여 가입을 완료해 주세요.
                     </p>
                     
@@ -89,7 +89,7 @@ class EmailService(
                 
                 <div style="text-align: center; margin-top: 40px;">
                     <a href="https://tomelater.gowoobro.com" style="display: inline-block; background-color: #4f46e5; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: 600; font-size: 15px; transition: background-color 0.2s;">
-                        또미레이터에서 확인하기
+                        투미레이터에서 확인하기
                     </a>
                 </div>
                 
