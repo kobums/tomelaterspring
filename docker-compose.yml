@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  gymspring:
+    image: kobums/tomelaterspring:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+      platforms:
+        - linux/amd64
+    container_name: tomelaterspring
+    ports:
+      - '8006:8006'
+    volumes:
+      - ./data:/app/data
+      - ./config:/app/config
+    env_file:
+      - .env
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - TZ=Asia/Seoul
+    networks:
+      - tomelaterspring-network
+    restart: unless-stopped
+
+networks:
+  tomelaterspring-network:
+    driver: bridge
