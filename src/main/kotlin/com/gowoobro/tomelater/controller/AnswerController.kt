@@ -75,6 +75,9 @@ class AnswerController(
             answerService.findAll(0, Int.MAX_VALUE).content
         }
 
+        // Sort by ID descending (newest first)
+        results = results.sortedByDescending { it.id }
+
         val totalElements = results.size
         val totalPages = if (pagesize > 0) (totalElements + pagesize - 1) / pagesize else 1
         val startIndex = page * pagesize
