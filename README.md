@@ -14,6 +14,7 @@
 - `DB_URL`, `DB_USER`, `DB_PASSWORD`
 - `MAIL_USERNAME`, `MAIL_PASSWORD` (Google SMTP)
 - `JWT_SECRET`
+- `ADMIN_EMAILS` (선택, 콤마 구분·대소문자 무시) — 질문 작성·수정·삭제(batch 포함) API를 허용할 관리자 이메일. 미설정 시 질문 쓰기는 전부 403 (조회는 그대로)
 
 ### 2. 데이터베이스 실행
 프로젝트 루트의 `docker-compose.yml`을 사용하여 MySQL 컨테이너를 실행합니다.

@@ -1,5 +1,6 @@
 package com.gowoobro.tomelater.controller
 
+import com.gowoobro.tomelater.config.AdminEmails
 import com.gowoobro.tomelater.entity.Question
 import com.gowoobro.tomelater.entity.QuestionCreateRequest
 import com.gowoobro.tomelater.entity.QuestionUpdateRequest
@@ -8,6 +9,7 @@ import com.gowoobro.tomelater.service.QuestionService
 import com.gowoobro.tomelater.entity.QuestionResponse
 
 import org.springframework.data.domain.Page
+import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
 import java.time.LocalDateTime
@@ -16,7 +18,11 @@ import java.time.LocalDateTime
 @RestController
 @RequestMapping("/api/question")
 class QuestionController(
-    private val questionService: QuestionService) {
+    private val questionService: QuestionService,
+    private val adminEmails: AdminEmails) {
+
+    // 질문 쓰기(작성·수정·삭제, batch 포함)는 ADMIN_EMAILS 관리자 전용. 미설정이면 전부 403.
+    private fun <T : Any> forbidden(): ResponseEntity<T> = ResponseEntity.status(HttpStatus.FORBIDDEN).build<T>()
 
     private fun toResponse(question: Question): QuestionResponse {
         return QuestionResponse.from(question)
@@ -145,6 +151,7 @@ class QuestionController(
 
     @PostMapping
     fun createQuestion(@RequestBody request: QuestionCreateRequest): ResponseEntity<QuestionResponse> {
+        if (!adminEmails.isCurrentUserAdmin()) return forbidden()
         return try {
             val res = questionService.create(request)
             ResponseEntity.ok(toResponse(res))
@@ -155,6 +162,7 @@ class QuestionController(
 
     @PostMapping("/batch")
     fun createQuestions(@RequestBody requests: List<QuestionCreateRequest>): ResponseEntity<List<QuestionResponse>> {
+        if (!adminEmails.isCurrentUserAdmin()) return forbidden()
         return try {
             val res = questionService.createBatch(requests)
             return ResponseEntity.ok(res.map { toResponse(it) } )
@@ -168,6 +176,7 @@ class QuestionController(
         @PathVariable id: Long,
         @RequestBody request: QuestionUpdateRequest
     ): ResponseEntity<QuestionResponse> {
+        if (!adminEmails.isCurrentUserAdmin()) return forbidden()
         val updatedRequest = request.copy(id = id)
         val res = questionService.update(updatedRequest)
         return if (res != null) {
@@ -182,6 +191,7 @@ class QuestionController(
         @PathVariable id: Long,
         @RequestBody request: QuestionPatchRequest
     ): ResponseEntity<QuestionResponse> {
+        if (!adminEmails.isCurrentUserAdmin()) return forbidden()
         val patchRequest = request.copy(id = id)
         val res = questionService.patch(patchRequest)
         return if (res != null) {
@@ -193,12 +203,14 @@ class QuestionController(
 
     @DeleteMapping("/{id}")
     fun deleteQuestion(@PathVariable id: Long): ResponseEntity<Map<String, Boolean>> {
+        if (!adminEmails.isCurrentUserAdmin()) return forbidden()
         val success = questionService.deleteById(id)
         return ResponseEntity.ok(mapOf("success" to success))
     }
 
     @DeleteMapping("/batch")
     fun deleteQuestions(@RequestBody entities: List<Question>): ResponseEntity<Map<String, Boolean>> {
+        if (!adminEmails.isCurrentUserAdmin()) return forbidden()
         val success = questionService.deleteBatch(entities)
         return ResponseEntity.ok(mapOf("success" to success))
     }
