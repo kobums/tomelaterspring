@@ -17,10 +17,6 @@ spring:
         dialect: org.hibernate.dialect.MySQLDialect
         format_sql: true
 
-  security:
-    user:
-      name: admin
-      password: admin
   mail:
     host: smtp.gmail.com
     port: 587

@@ -8,7 +8,9 @@ import com.gowoobro.tomelater.service.UserService
 import com.gowoobro.tomelater.entity.UserResponse
 
 import org.springframework.data.domain.Page
+import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
+import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.web.bind.annotation.*
 import java.time.LocalDateTime
 
@@ -20,6 +22,13 @@ class UserController(
 
     private fun toResponse(user: User): UserResponse {
         return UserResponse.from(user)
+    }
+
+    // 로그인한 사용자 본인의 계정인지 확인한다 (다른 사용자 수정/삭제 방지).
+    private fun isSelf(id: Long): Boolean {
+        val email = SecurityContextHolder.getContext().authentication?.name ?: return false
+        val target = userService.findById(id) ?: return false
+        return target.email == email
     }
 
     private fun filterByDateRange(
@@ -191,6 +200,7 @@ class UserController(
         @PathVariable id: Long,
         @RequestBody request: UserUpdateRequest
     ): ResponseEntity<UserResponse> {
+        if (!isSelf(id)) return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         val updatedRequest = request.copy(id = id)
         val res = userService.update(updatedRequest)
         return if (res != null) {
@@ -205,6 +215,7 @@ class UserController(
         @PathVariable id: Long,
         @RequestBody request: UserPatchRequest
     ): ResponseEntity<UserResponse> {
+        if (!isSelf(id)) return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         val patchRequest = request.copy(id = id)
         val res = userService.patch(patchRequest)
         return if (res != null) {
@@ -216,12 +227,15 @@ class UserController(
 
     @DeleteMapping("/{id}")
     fun deleteUser(@PathVariable id: Long): ResponseEntity<Map<String, Boolean>> {
+        if (!isSelf(id)) return ResponseEntity.status(HttpStatus.FORBIDDEN).body(mapOf("success" to false))
         val success = userService.deleteById(id)
         return ResponseEntity.ok(mapOf("success" to success))
     }
 
     @DeleteMapping("/batch")
     fun deleteUsers(@RequestBody entities: List<User>): ResponseEntity<Map<String, Boolean>> {
+        // 일괄 삭제는 본인 계정에 한해서만 허용한다.
+        if (entities.any { !isSelf(it.id) }) return ResponseEntity.status(HttpStatus.FORBIDDEN).body(mapOf("success" to false))
         val success = userService.deleteBatch(entities)
         return ResponseEntity.ok(mapOf("success" to success))
     }

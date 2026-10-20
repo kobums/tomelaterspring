@@ -12,7 +12,7 @@ import java.util.*
 @Component
 class JwtUtil {
     
-    @Value("\${jwt.secret:mySecretKey}")
+    @Value("\${jwt.secret}")
     private lateinit var secretKey: String
     
     @Value("\${jwt.expiration:86400000}")  // 24 hours in milliseconds

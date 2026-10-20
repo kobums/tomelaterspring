@@ -103,7 +103,10 @@ class UserService(private val userRepository: UserRepository, private val passwo
     fun update(request: UserUpdateRequest): User? {
         val existing = userRepository.findById(request.id).orElse(null) ?: return null
         val requestPasswd = request.passwd ?: ""
-        val encodedPassword = if (requestPasswd != existing.passwd && !requestPasswd.startsWith("\$2a\$")) {
+        // 응답에서 passwd 를 비워 보내므로, 빈 값이 오면 기존 비밀번호를 유지한다.
+        val encodedPassword = if (requestPasswd.isBlank()) {
+            existing.passwd
+        } else if (requestPasswd != existing.passwd && !requestPasswd.startsWith("\$2a\$")) {
             passwordEncoder.encode(requestPasswd)!!
         } else {
             requestPasswd
@@ -153,7 +156,7 @@ class UserService(private val userRepository: UserRepository, private val passwo
 
         val updated = existing.copy(
             email = request.email ?: existing.email,
-            passwd = request.passwd ?: existing.passwd,
+            passwd = request.passwd?.takeIf { it.isNotBlank() }?.let { passwordEncoder.encode(it)!! } ?: existing.passwd,
             nickname = request.nickname ?: existing.nickname,
             socialtype = request.socialtype ?: existing.socialtype,
             socialid = request.socialid ?: existing.socialid,

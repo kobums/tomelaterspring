@@ -136,8 +136,6 @@ class AuthController(
             println("User found: ${user != null}")
 
             if (user != null) {
-                println("User password from DB: ${user.passwd}")
-                println("Input password: $passwd")
                 val passwordMatches = passwordEncoder.matches(passwd, user.passwd)
                 println("Password matches: $passwordMatches")
 
@@ -180,11 +178,5 @@ class AuthController(
         } catch (e: Exception) {
             ResponseEntity.status(401).body(null)
         }
-    }
-
-    @GetMapping("/test/encode-password")
-    fun encodePassword(@RequestParam password: String): ResponseEntity<Map<String, String?>> {
-        val encoded = passwordEncoder.encode(password)
-        return ResponseEntity.ok(mapOf("password" to password, "encoded" to encoded))
     }
 }
