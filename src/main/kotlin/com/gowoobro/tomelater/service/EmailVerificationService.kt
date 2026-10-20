@@ -54,18 +54,38 @@ class EmailVerificationService(private val emailService: EmailService) {
                 failedAttempts.remove(email)
             }
         }
-        if (isValid) {
-            // Once verified, we could keep it as verified for a short period
-            // or just return true and let the caller handle it.
-            // For now, we keep it so the registration can check it.
-        }
         return isValid
     }
-    
+
+    // 회원가입용: 코드 확인(/api/auth/verify/check)에 성공한 이메일을 일정 시간 "인증됨"으로 기억해 두고,
+    // POST /api/user 가 이 표시를 확인·소모한다. 예전엔 isVerified() 가 항상 true 라
+    // 인증 단계를 건너뛰고 아무 이메일로나 가입할 수 있었다.
+    private val VERIFIED_TTL_MS = 30 * 60 * 1000L
+    private val verifiedEmails = ConcurrentHashMap<String, Long>()
+
+    /** 코드를 확인하고, 맞으면 재사용하지 못하게 폐기한다. */
+    fun consumeCode(email: String, code: String): Boolean {
+        if (!verifyCode(email, code)) return false
+        verificationCodes.remove(email)
+        failedAttempts.remove(email)
+        return true
+    }
+
+    fun markVerified(email: String) {
+        verifiedEmails[email] = System.currentTimeMillis() + VERIFIED_TTL_MS
+    }
+
     fun isVerified(email: String): Boolean {
-        // This could be more sophisticated, but for now we just verify against the stored code
-        // in a separate step or just rely on the verifyCode call.
-        return true // Simplified or adjusted based on flow
+        val expiration = verifiedEmails[email] ?: return false
+        if (System.currentTimeMillis() > expiration) {
+            verifiedEmails.remove(email)
+            return false
+        }
+        return true
+    }
+
+    fun clearVerified(email: String) {
+        verifiedEmails.remove(email)
     }
 
     private fun IntRange.random() = start + secureRandom.nextInt(endInclusive - start + 1)

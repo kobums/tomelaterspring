@@ -22,7 +22,6 @@ interface UserRepository : JpaRepository<User, Long> {
 
     fun findByEmail(email: String): List<User>
 
-    fun findByPasswd(passwd: String): List<User>
 
     fun findByNickname(nickname: String): List<User>
 
