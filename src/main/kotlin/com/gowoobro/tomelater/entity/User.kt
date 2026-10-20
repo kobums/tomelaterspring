@@ -78,7 +78,7 @@ data class UserResponse(
             return UserResponse(
                 id = user.id,
                 email = user.email,
-                passwd = user.passwd,
+                passwd = "", // 비밀번호 해시는 응답에 노출하지 않는다
                 nickname = user.nickname,
                 socialtype = user.socialtype,
                 socialid = user.socialid,

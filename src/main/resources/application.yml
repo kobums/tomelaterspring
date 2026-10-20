@@ -11,16 +11,13 @@ spring:
   jpa:
     hibernate:
       ddl-auto: none
-    show-sql: true
+    # SQL 로그는 기본으로 끈다(바인딩 값·개인정보가 운영 로그에 남지 않게). 로컬에서만 application-local.yml 로 켠다.
+    show-sql: false
     properties:
       hibernate:
         dialect: org.hibernate.dialect.MySQLDialect
-        format_sql: true
+        format_sql: false
 
-  security:
-    user:
-      name: admin
-      password: admin
   mail:
     host: smtp.gmail.com
     port: 587
@@ -44,8 +41,10 @@ server:
   port: 8006
   address: 0.0.0.0
 
+# Spring Security DEBUG 는 요청 URL(쿼리스트링 포함 — 예: 구버전 앱의 GET /api/jwt?passwd=...)을
+# 로그에 남기므로 기본값은 INFO 로 둔다. 디버깅은 SPRING_PROFILES_ACTIVE=local 에서만.
 logging:
   level:
-    com.gowoobro.tomelater: DEBUG
-    org.springframework.security: DEBUG
+    com.gowoobro.tomelater: INFO
+    org.springframework.security: INFO
     org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder: ERROR

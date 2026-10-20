@@ -8,7 +8,9 @@ import com.gowoobro.tomelater.service.UserService
 import com.gowoobro.tomelater.entity.UserResponse
 
 import org.springframework.data.domain.Page
+import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
+import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.web.bind.annotation.*
 import java.time.LocalDateTime
 
@@ -18,8 +20,20 @@ import java.time.LocalDateTime
 class UserController(
     private val userService: UserService) {
 
+    private fun currentEmail(): String? = SecurityContextHolder.getContext().authentication?.name
+
+    // 이메일·소셜 ID 는 본인에게만 보여 준다. 예전엔 로그인한 아무나 /api/user 목록·검색으로
+    // 전체 회원의 이메일을 가져갈 수 있었다.
     private fun toResponse(user: User): UserResponse {
-        return UserResponse.from(user)
+        val res = UserResponse.from(user)
+        return if (user.email == currentEmail()) res else res.copy(email = "", socialid = "")
+    }
+
+    // 로그인한 사용자 본인의 계정인지 확인한다 (다른 사용자 수정/삭제 방지).
+    private fun isSelf(id: Long): Boolean {
+        val email = SecurityContextHolder.getContext().authentication?.name ?: return false
+        val target = userService.findById(id) ?: return false
+        return target.email == email
     }
 
     private fun filterByDateRange(
@@ -40,32 +54,21 @@ class UserController(
     fun getUsers(
         @RequestParam(defaultValue = "0") page: Int,
         @RequestParam(defaultValue = "10") pagesize: Int,
-        @RequestParam(required = false) email: String?,
-        @RequestParam(required = false) passwd: String?,
         @RequestParam(required = false) nickname: String?,
         @RequestParam(required = false) socialtype: String?,
-        @RequestParam(required = false) socialid: String?,
         @RequestParam(required = false) startcreatedat: LocalDateTime?,
         @RequestParam(required = false) endcreatedat: LocalDateTime?,
         @RequestParam(required = false) startupdatedat: LocalDateTime?,
         @RequestParam(required = false) endupdatedat: LocalDateTime?,
     ): ResponseEntity<Map<String, Any>> {
-        var results = if (email != null || passwd != null || nickname != null || socialtype != null || socialid != null || startcreatedat != null || endcreatedat != null || startupdatedat != null || endupdatedat != null || false) {
+        // email / passwd / socialid 로 거르는 기능은 제거했다(비밀번호 해시 대조·이메일 존재 여부 확인에 악용 가능).
+        var results = if (nickname != null || socialtype != null || startcreatedat != null || endcreatedat != null || startupdatedat != null || endupdatedat != null || false) {
             var filtered = userService.findAll(0, Int.MAX_VALUE).content
-            if (email != null) {
-                filtered = filtered.filter { it.email == email }
-            }
-            if (passwd != null) {
-                filtered = filtered.filter { it.passwd == passwd }
-            }
             if (nickname != null) {
                 filtered = filtered.filter { it.nickname == nickname }
             }
             if (socialtype != null) {
                 filtered = filtered.filter { it.socialtype == socialtype }
-            }
-            if (socialid != null) {
-                filtered = filtered.filter { it.socialid == socialid }
             }
             if (startcreatedat != null || endcreatedat != null) {
                 filtered = filtered.filter { filterByDateRange(it.createdat, startcreatedat, endcreatedat) }
@@ -114,17 +117,8 @@ class UserController(
     }
 
 
-    @GetMapping("/search/email")
-    fun getUserByEmail(@RequestParam email: String): ResponseEntity<List<UserResponse>> {
-        val res = userService.findByEmail(email)
-        return ResponseEntity.ok(res.map { toResponse(it) } )
-    }
-
-    @GetMapping("/search/passwd")
-    fun getUserByPasswd(@RequestParam passwd: String): ResponseEntity<List<UserResponse>> {
-        val res = userService.findByPasswd(passwd)
-        return ResponseEntity.ok(res.map { toResponse(it) } )
-    }
+    // /search/email, /search/passwd, /search/socialid 는 제거했다: 비밀번호(해시) 대조와
+    // 다른 회원의 이메일·소셜 계정 조회에 쓰일 수 있고, 클라이언트도 사용하지 않는다.
 
     @GetMapping("/search/nickname")
     fun getUserByNickname(@RequestParam nickname: String): ResponseEntity<List<UserResponse>> {
@@ -135,12 +129,6 @@ class UserController(
     @GetMapping("/search/socialtype")
     fun getUserBySocialtype(@RequestParam socialtype: String): ResponseEntity<List<UserResponse>> {
         val res = userService.findBySocialtype(socialtype)
-        return ResponseEntity.ok(res.map { toResponse(it) } )
-    }
-
-    @GetMapping("/search/socialid")
-    fun getUserBySocialid(@RequestParam socialid: String): ResponseEntity<List<UserResponse>> {
-        val res = userService.findBySocialid(socialid)
         return ResponseEntity.ok(res.map { toResponse(it) } )
     }
 
@@ -167,7 +155,8 @@ class UserController(
     fun createUser(@RequestBody request: UserCreateRequest): ResponseEntity<Any> {
         return try {
             val res = userService.create(request)
-            ResponseEntity.ok(toResponse(res))
+            // 방금 인증을 마친 본인 정보이므로 그대로 돌려준다(가입 요청엔 토큰이 없다).
+            ResponseEntity.ok(UserResponse.from(res))
         } catch (e: IllegalArgumentException) {
             ResponseEntity.status(409).body(mapOf("error" to (e.message ?: "요청이 잘못되었습니다.")))
         } catch (e: Exception) {
@@ -191,6 +180,7 @@ class UserController(
         @PathVariable id: Long,
         @RequestBody request: UserUpdateRequest
     ): ResponseEntity<UserResponse> {
+        if (!isSelf(id)) return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         val updatedRequest = request.copy(id = id)
         val res = userService.update(updatedRequest)
         return if (res != null) {
@@ -205,6 +195,7 @@ class UserController(
         @PathVariable id: Long,
         @RequestBody request: UserPatchRequest
     ): ResponseEntity<UserResponse> {
+        if (!isSelf(id)) return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         val patchRequest = request.copy(id = id)
         val res = userService.patch(patchRequest)
         return if (res != null) {
@@ -216,12 +207,15 @@ class UserController(
 
     @DeleteMapping("/{id}")
     fun deleteUser(@PathVariable id: Long): ResponseEntity<Map<String, Boolean>> {
+        if (!isSelf(id)) return ResponseEntity.status(HttpStatus.FORBIDDEN).body(mapOf("success" to false))
         val success = userService.deleteById(id)
         return ResponseEntity.ok(mapOf("success" to success))
     }
 
     @DeleteMapping("/batch")
     fun deleteUsers(@RequestBody entities: List<User>): ResponseEntity<Map<String, Boolean>> {
+        // 일괄 삭제는 본인 계정에 한해서만 허용한다.
+        if (entities.any { !isSelf(it.id) }) return ResponseEntity.status(HttpStatus.FORBIDDEN).body(mapOf("success" to false))
         val success = userService.deleteBatch(entities)
         return ResponseEntity.ok(mapOf("success" to success))
     }

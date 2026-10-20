@@ -17,7 +17,11 @@ import java.time.LocalDateTime
 
 @Service
 @Transactional
-class UserService(private val userRepository: UserRepository, private val passwordEncoder: PasswordEncoder) {
+class UserService(
+    private val userRepository: UserRepository,
+    private val passwordEncoder: PasswordEncoder,
+    private val emailVerificationService: EmailVerificationService,
+) {
 
     fun findAll(page: Int = 0, pagesize: Int = 10): Page<User> {
         val pageable: Pageable = PageRequest.of(page, pagesize)
@@ -35,10 +39,6 @@ class UserService(private val userRepository: UserRepository, private val passwo
 
     fun findByEmail(email: String): List<User> {
         return userRepository.findByEmail(email)
-    }
-
-    fun findByPasswd(passwd: String): List<User> {
-        return userRepository.findByPasswd(passwd)
     }
 
     fun findByNickname(nickname: String): List<User> {
@@ -69,6 +69,10 @@ class UserService(private val userRepository: UserRepository, private val passwo
         if (userRepository.existsByNickname(request.nickname)) {
             throw IllegalArgumentException("이미 존재하는 닉네임입니다.")
         }
+        // 서버에서 이메일 인증을 강제한다: /api/auth/verify/check 를 통과한 이메일만 가입할 수 있다.
+        if (!emailVerificationService.isVerified(request.email)) {
+            throw IllegalStateException("이메일 인증을 완료해주세요.")
+        }
 
         val now = LocalDateTime.now()
         val entity = User(
@@ -80,30 +84,24 @@ class UserService(private val userRepository: UserRepository, private val passwo
             createdat = now,
             updatedat = now,
         )
-        return userRepository.save(entity)
+        val saved = userRepository.save(entity)
+        emailVerificationService.clearVerified(request.email)
+        return saved
     }
 
 
     fun createBatch(requests: List<UserCreateRequest>): List<User> {
-        val now = LocalDateTime.now()
-        val entities = requests.map { request ->
-            User(
-                email = request.email,
-                passwd = passwordEncoder.encode(request.passwd ?: "")!!,
-                nickname = request.nickname,
-                socialtype = request.socialtype,
-                socialid = request.socialid,
-                createdat = now,
-                updatedat = now,
-            )
-        }
-        return userRepository.saveAll(entities)
+        // 단건 가입과 같은 검사(중복·이메일 인증)를 거친다.
+        return requests.map { create(it) }
     }
 
     fun update(request: UserUpdateRequest): User? {
         val existing = userRepository.findById(request.id).orElse(null) ?: return null
         val requestPasswd = request.passwd ?: ""
-        val encodedPassword = if (requestPasswd != existing.passwd && !requestPasswd.startsWith("\$2a\$")) {
+        // 응답에서 passwd 를 비워 보내므로, 빈 값이 오면 기존 비밀번호를 유지한다.
+        val encodedPassword = if (requestPasswd.isBlank()) {
+            existing.passwd
+        } else if (requestPasswd != existing.passwd && !requestPasswd.startsWith("\$2a\$")) {
             passwordEncoder.encode(requestPasswd)!!
         } else {
             requestPasswd
@@ -111,7 +109,8 @@ class UserService(private val userRepository: UserRepository, private val passwo
         
 
         val updated = existing.copy(
-            email = request.email,
+            // 이메일은 인증을 거쳐야만 바꿀 수 있으므로 일반 수정으로는 변경하지 않는다.
+            email = existing.email,
             passwd = encodedPassword,
             nickname = request.nickname,
             socialtype = request.socialtype,
@@ -152,8 +151,8 @@ class UserService(private val userRepository: UserRepository, private val passwo
         val existing = userRepository.findById(request.id).orElse(null) ?: return null
 
         val updated = existing.copy(
-            email = request.email ?: existing.email,
-            passwd = request.passwd ?: existing.passwd,
+            email = existing.email, // 이메일 변경은 인증 없이 허용하지 않는다.
+            passwd = request.passwd?.takeIf { it.isNotBlank() }?.let { passwordEncoder.encode(it)!! } ?: existing.passwd,
             nickname = request.nickname ?: existing.nickname,
             socialtype = request.socialtype ?: existing.socialtype,
             socialid = request.socialid ?: existing.socialid,

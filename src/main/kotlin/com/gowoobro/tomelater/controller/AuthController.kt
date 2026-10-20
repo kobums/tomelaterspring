@@ -4,6 +4,7 @@ import com.gowoobro.tomelater.config.JwtUtil
 import com.gowoobro.tomelater.entity.*
 import com.gowoobro.tomelater.service.EmailVerificationService
 import com.gowoobro.tomelater.service.UserService
+import org.slf4j.LoggerFactory
 import org.springframework.http.ResponseEntity
 import org.springframework.security.authentication.AuthenticationManager
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
@@ -29,24 +30,27 @@ class AuthController(
     private val passwordEncoder: PasswordEncoder,
     private val emailVerificationService: EmailVerificationService
 ) {
+    private val logger = LoggerFactory.getLogger(AuthController::class.java)
     
     @PostMapping("/auth/verify/send")
     fun sendVerificationCode(@RequestBody request: VerificationRequest): ResponseEntity<Map<String, String>> {
         return try {
-            println("Verification code request for email: ${request.email}")
             emailVerificationService.sendCode(request.email)
             ResponseEntity.ok(mapOf("message" to "인증 코드가 발송되었습니다."))
         } catch (e: Exception) {
-            println("Failed to send verification code: ${e.message}")
-            e.printStackTrace()
-            ResponseEntity.status(500).body(mapOf("error" to "인증 코드 발송에 실패했습니다: ${e.message}"))
+            logger.warn("Failed to send verification code", e)
+            ResponseEntity.status(500).body(mapOf("error" to "인증 코드 발송에 실패했습니다."))
         }
     }
 
 
     @PostMapping("/auth/verify/check")
     fun checkVerificationCode(@RequestBody request: VerificationRequest): ResponseEntity<Map<String, Boolean>> {
-        val isValid = emailVerificationService.verifyCode(request.email, request.code ?: "")
+        // 성공하면 코드를 소모하고 이메일을 "인증됨"으로 표시한다(POST /api/user 가 확인).
+        val isValid = emailVerificationService.consumeCode(request.email, request.code ?: "")
+        if (isValid) {
+            emailVerificationService.markVerified(request.email)
+        }
         return ResponseEntity.ok(mapOf("valid" to isValid))
     }
 
@@ -109,7 +113,9 @@ class AuthController(
     
     @PostMapping("/auth/password/reset")
     fun resetPassword(@RequestBody request: ResetPasswordRequest): ResponseEntity<Map<String, String>> {
-        val isValid = emailVerificationService.verifyCode(request.email, request.code)
+        // 코드는 한 번만 쓸 수 있다(재설정 후 같은 코드로 다시 바꾸지 못하게).
+        val isValid = request.newPasswd.isNotBlank() &&
+            emailVerificationService.consumeCode(request.email, request.code)
         if (!isValid) {
             return ResponseEntity.status(400).body(mapOf("error" to "인증 코드가 올바르지 않거나 만료되었습니다."))
         }
@@ -124,37 +130,27 @@ class AuthController(
 
 
     
+    /**
+     * @deprecated 비밀번호가 쿼리스트링(URL)에 실려 프록시·액세스 로그·브라우저 기록에 남는다.
+     * 새 클라이언트는 POST /api/auth/login 을 사용한다. 이미 배포된 앱 버전 호환을 위해서만 남겨 두며,
+     * 구버전 앱이 충분히 사라지면 제거한다. 이 핸들러는 요청 값(이메일/비밀번호)을 로그에 남기지 않는다.
+     */
+    @Deprecated("Use POST /api/auth/login")
     @GetMapping("/jwt")
     fun authenticateUser(
         @RequestParam email: String,
         @RequestParam passwd: String
     ): ResponseEntity<JwtResponse> {
         return try {
-            println("JWT Login attempt: email=$email")
-            val users = userService.findByEmail(email)
-            val user = users.firstOrNull()
-            println("User found: ${user != null}")
-
-            if (user != null) {
-                println("User password from DB: ${user.passwd}")
-                println("Input password: $passwd")
-                val passwordMatches = passwordEncoder.matches(passwd, user.passwd)
-                println("Password matches: $passwordMatches")
-
-                if (passwordMatches) {
-                    val jwt = jwtUtil.generateToken(user.email)
-                    println("JWT generated successfully")
-                    val userResponse = UserResponse.from(user)
-                    ResponseEntity.ok(JwtResponse(jwt, "Bearer", userResponse))
-                } else {
-                    ResponseEntity.status(401).body(null)
-                }
+            val user = userService.findByEmail(email).firstOrNull()
+            // 존재하지 않는 계정과 비밀번호 불일치를 구분하지 않는다(계정 존재 여부 노출 방지).
+            if (user != null && passwordEncoder.matches(passwd, user.passwd)) {
+                val jwt = jwtUtil.generateToken(user.email)
+                ResponseEntity.ok(JwtResponse(jwt, "Bearer", UserResponse.from(user)))
             } else {
-                ResponseEntity.status(404).body(null)
+                ResponseEntity.status(401).body(null)
             }
         } catch (e: Exception) {
-            println("Authentication error: ${e.message}")
-            e.printStackTrace()
             ResponseEntity.status(500).body(null)
         }
     }
@@ -180,11 +176,5 @@ class AuthController(
         } catch (e: Exception) {
             ResponseEntity.status(401).body(null)
         }
-    }
-
-    @GetMapping("/test/encode-password")
-    fun encodePassword(@RequestParam password: String): ResponseEntity<Map<String, String?>> {
-        val encoded = passwordEncoder.encode(password)
-        return ResponseEntity.ok(mapOf("password" to password, "encoded" to encoded))
     }
 }

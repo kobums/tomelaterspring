@@ -5,11 +5,14 @@ import com.gowoobro.tomelater.entity.AnswerCreateRequest
 import com.gowoobro.tomelater.entity.AnswerUpdateRequest
 import com.gowoobro.tomelater.entity.AnswerPatchRequest
 import com.gowoobro.tomelater.service.AnswerService
+import com.gowoobro.tomelater.service.UserService
 import com.gowoobro.tomelater.entity.AnswerResponse
 import com.gowoobro.tomelater.enums.answer.Ispublic
 
 import org.springframework.data.domain.Page
+import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
+import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.web.bind.annotation.*
 import java.time.LocalDateTime
 
@@ -17,11 +20,28 @@ import java.time.LocalDateTime
 @RestController
 @RequestMapping("/api/answer")
 class AnswerController(
-    private val answerService: AnswerService) {
+    private val answerService: AnswerService,
+    private val userService: UserService) {
 
-    private fun toResponse(answer: Answer): AnswerResponse {
-        return AnswerResponse.from(answer)
+    // 토큰의 사용자 id (알 수 없으면 0 — 실제 사용자 id 와 겹치지 않는다).
+    private fun viewerId(): Long {
+        val email = SecurityContextHolder.getContext().authentication?.name ?: return 0L
+        return userService.findByEmail(email).firstOrNull()?.id ?: 0L
     }
+
+    // 비공개 답변은 작성자 본인에게만 보인다(목록·검색·단건 조회 공통).
+    private fun canView(answer: Answer, viewer: Long): Boolean =
+        answer.ispublic == Ispublic.PUBLIC || answer.uidId == viewer
+
+    private fun toResponse(answer: Answer, viewer: Long): AnswerResponse {
+        val res = AnswerResponse.from(answer)
+        // 다른 사람의 (공개) 답변에 딸린 작성자 정보에서는 이메일·소셜 ID 를 뺀다.
+        if (answer.uidId == viewer) return res
+        return res.copy(extra = res.extra.copy(user = res.extra.user?.copy(email = "", socialid = "")))
+    }
+
+    private fun visible(items: List<Answer>, viewer: Long): List<AnswerResponse> =
+        items.filter { canView(it, viewer) }.map { toResponse(it, viewer) }
 
     private fun filterByDateRange(
         value: LocalDateTime?,
@@ -50,6 +70,7 @@ class AnswerController(
         @RequestParam(required = false) startupdatedat: LocalDateTime?,
         @RequestParam(required = false) endupdatedat: LocalDateTime?,
     ): ResponseEntity<Map<String, Any>> {
+        val viewer = viewerId()
         var results = if (uid != null || qid != null || content != null || ispublic != null || startcreatedat != null || endcreatedat != null || startupdatedat != null || endupdatedat != null || false) {
             var filtered = answerService.findAll(0, Int.MAX_VALUE).content
             if (uid != null) {
@@ -75,6 +96,8 @@ class AnswerController(
             answerService.findAll(0, Int.MAX_VALUE).content
         }
 
+        results = results.filter { canView(it, viewer) }
+
         // Sort by ID descending (newest first)
         results = results.sortedByDescending { it.id }
 
@@ -90,7 +113,7 @@ class AnswerController(
         }
 
         val response = mapOf(
-            "content" to pagedResults.map { toResponse(it) },
+            "content" to pagedResults.map { toResponse(it, viewer) },
             "page" to page,
             "size" to pagesize,
             "totalElements" to totalElements,
@@ -105,9 +128,10 @@ class AnswerController(
 
     @GetMapping("/{id}")
     fun getAnswer(@PathVariable id: Long): ResponseEntity<AnswerResponse> {
-        val res = answerService.findById(id)
+        val viewer = viewerId()
+        val res = answerService.findById(id)?.takeIf { canView(it, viewer) }
         return if (res != null) {
-            ResponseEntity.ok(toResponse(res))
+            ResponseEntity.ok(toResponse(res, viewer))
         } else {
             ResponseEntity.notFound().build()
         }
@@ -117,37 +141,37 @@ class AnswerController(
     @GetMapping("/search/uid")
     fun getAnswerByUid(@RequestParam uid: Long): ResponseEntity<List<AnswerResponse>> {
         val res = answerService.findByUid(uid)
-        return ResponseEntity.ok(res.map { toResponse(it) } )
+        return ResponseEntity.ok(visible(res, viewerId()))
     }
 
     @GetMapping("/search/qid")
     fun getAnswerByQid(@RequestParam qid: Long): ResponseEntity<List<AnswerResponse>> {
         val res = answerService.findByQid(qid)
-        return ResponseEntity.ok(res.map { toResponse(it) } )
+        return ResponseEntity.ok(visible(res, viewerId()))
     }
 
     @GetMapping("/search/content")
     fun getAnswerByContent(@RequestParam content: String): ResponseEntity<List<AnswerResponse>> {
         val res = answerService.findByContent(content)
-        return ResponseEntity.ok(res.map { toResponse(it) } )
+        return ResponseEntity.ok(visible(res, viewerId()))
     }
 
     @GetMapping("/search/ispublic")
     fun getAnswerByIspublic(@RequestParam ispublic: Ispublic): ResponseEntity<List<AnswerResponse>> {
         val res = answerService.findByIspublic(ispublic)
-        return ResponseEntity.ok(res.map { toResponse(it) } )
+        return ResponseEntity.ok(visible(res, viewerId()))
     }
 
     @GetMapping("/search/createdat")
     fun getAnswerByCreatedat(@RequestParam createdat: LocalDateTime): ResponseEntity<List<AnswerResponse>> {
         val res = answerService.findByCreatedat(createdat)
-        return ResponseEntity.ok(res.map { toResponse(it) } )
+        return ResponseEntity.ok(visible(res, viewerId()))
     }
 
     @GetMapping("/search/updatedat")
     fun getAnswerByUpdatedat(@RequestParam updatedat: LocalDateTime): ResponseEntity<List<AnswerResponse>> {
         val res = answerService.findByUpdatedat(updatedat)
-        return ResponseEntity.ok(res.map { toResponse(it) } )
+        return ResponseEntity.ok(visible(res, viewerId()))
     }
 
 
@@ -159,9 +183,12 @@ class AnswerController(
 
     @PostMapping
     fun createAnswer(@RequestBody request: AnswerCreateRequest): ResponseEntity<AnswerResponse> {
+        val viewer = viewerId()
+        if (viewer == 0L) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
         return try {
-            val res = answerService.create(request)
-            ResponseEntity.ok(toResponse(res))
+            // 작성자는 토큰의 사용자로 고정한다(남의 uid 로 답변을 만들지 못하게).
+            val res = answerService.create(request.copy(uid = viewer))
+            ResponseEntity.ok(toResponse(res, viewer))
         } catch (e: Exception) {
             ResponseEntity.badRequest().build()
         }
@@ -169,9 +196,11 @@ class AnswerController(
 
     @PostMapping("/batch")
     fun createAnswers(@RequestBody requests: List<AnswerCreateRequest>): ResponseEntity<List<AnswerResponse>> {
+        val viewer = viewerId()
+        if (viewer == 0L) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
         return try {
-            val res = answerService.createBatch(requests)
-            return ResponseEntity.ok(res.map { toResponse(it) } )
+            val res = answerService.createBatch(requests.map { it.copy(uid = viewer) })
+            return ResponseEntity.ok(res.map { toResponse(it, viewer) } )
         } catch (e: Exception) {
             ResponseEntity.badRequest().build()
         }
@@ -182,10 +211,14 @@ class AnswerController(
         @PathVariable id: Long,
         @RequestBody request: AnswerUpdateRequest
     ): ResponseEntity<AnswerResponse> {
-        val updatedRequest = request.copy(id = id)
+        val viewer = viewerId()
+        val existing = answerService.findById(id) ?: return ResponseEntity.notFound().build()
+        if (existing.uidId != viewer) return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+        // uid 는 바꿀 수 없다(답변 소유권 이전 방지).
+        val updatedRequest = request.copy(id = id, uid = existing.uidId)
         val res = answerService.update(updatedRequest)
         return if (res != null) {
-            ResponseEntity.ok(toResponse(res))
+            ResponseEntity.ok(toResponse(res, viewer))
         } else {
             ResponseEntity.notFound().build()
         }
@@ -196,10 +229,13 @@ class AnswerController(
         @PathVariable id: Long,
         @RequestBody request: AnswerPatchRequest
     ): ResponseEntity<AnswerResponse> {
-        val patchRequest = request.copy(id = id)
+        val viewer = viewerId()
+        val existing = answerService.findById(id) ?: return ResponseEntity.notFound().build()
+        if (existing.uidId != viewer) return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+        val patchRequest = request.copy(id = id, uid = null) // uid 변경 무시(소유권 이전 방지)
         val res = answerService.patch(patchRequest)
         return if (res != null) {
-            ResponseEntity.ok(toResponse(res))
+            ResponseEntity.ok(toResponse(res, viewer))
         } else {
             ResponseEntity.notFound().build()
         }
@@ -207,13 +243,23 @@ class AnswerController(
 
     @DeleteMapping("/{id}")
     fun deleteAnswer(@PathVariable id: Long): ResponseEntity<Map<String, Boolean>> {
+        val existing = answerService.findById(id)
+        if (existing == null || existing.uidId != viewerId()) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(mapOf("success" to false))
+        }
         val success = answerService.deleteById(id)
         return ResponseEntity.ok(mapOf("success" to success))
     }
 
     @DeleteMapping("/batch")
     fun deleteAnswers(@RequestBody entities: List<Answer>): ResponseEntity<Map<String, Boolean>> {
-        val success = answerService.deleteBatch(entities)
+        // 요청 본문의 uid 를 믿지 않고 DB 의 소유자로 확인한다.
+        val viewer = viewerId()
+        val owned = entities.map { answerService.findById(it.id) }
+        if (owned.any { it == null || it.uidId != viewer }) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(mapOf("success" to false))
+        }
+        val success = answerService.deleteBatch(owned.filterNotNull())
         return ResponseEntity.ok(mapOf("success" to success))
     }
 }
